@@ -6,7 +6,7 @@ SESSION | id=chief-of-staff | model=deepseek-harness | state=idle
 
 LANDED | row=2 | sha=31742d0 | verify=MY OWN: full gate GREEN exit 0, 26/26 · engine core
   (map, combat, cards, turns) | note=engine; starting-armies defect caught by gate and fixed
-LANDED | row=3 | sha=pending | verify=MY OWN: full gate GREEN exit 0, 33/33 · web typecheck
+LANDED | row=3 | sha=eab8d82 | verify=MY OWN: full gate GREEN exit 0, 33/33 · web typecheck
   in cheap tier · vite build OK · headless screenshot verified | note=AI, save/load, hero UI
 
 QUEUE | row=4 | Turn-loop playtest (AI vs human end-to-end, scripted) | src=docs/TESTING.md
