@@ -1,6 +1,6 @@
 # The board — what is happening right now
 
-reconciled: 31742d0 · 2026-10-08T08:21Z
+reconciled: 833c236 · 2026-10-08T08:22Z
 
 SESSION | id=chief-of-staff | model=deepseek-harness | state=idle
 
@@ -12,7 +12,7 @@ LANDED | row=3 | sha=eab8d82 | verify=MY OWN: full gate GREEN exit 0, 33/33 · w
 QUEUE | row=4 | Turn-loop playtest (AI vs human end-to-end, scripted) | src=docs/TESTING.md
 QUEUE | row=5 | Trade-cards UI: let player pick the 3 cards (currently fixed indices 0-2) | src=web/main.ts
 
-RECOVERY | repo=/home/administrator/Risk | remote=none (GitHub deferred by owner) | branch=main | gate=bash scripts/gate.sh
+RECOVERY | repo=/home/administrator/Risk | remote=https://github.com/ArndRosemeier/Risk-Haiku.git | branch=main | gate=bash scripts/gate.sh
 
 ## Guards
 
