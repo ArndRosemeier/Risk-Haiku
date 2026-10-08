@@ -209,3 +209,32 @@ describe("determinism", () => {
     }
   });
 });
+
+describe("card deck reshuffle (regression: long games exhausted the deck and threw)", () => {
+  it("reshuffles the discard pile into the deck instead of throwing", () => {
+    const g0 = newGame({ seed: 21, names: TWO });
+    const from = TERRITORIES.find((t) => g0.owner[t.id] === 0)!;
+    const to = TERRITORY_BY_ID.get(from.neighbors.find((n) => g0.owner[n] === 1) ?? "")!;
+    const owner = { ...g0.owner, [to.id]: 1 };
+    const armies = { ...g0.armies, [from.id]: 60, [to.id]: 1 };
+    // Deck empty, discard holds 5 cards: a conquest must reshuffle, not throw.
+    const discard = g0.deck.slice(0, 5);
+    const g: Game = { ...g0, owner, armies, deck: [], discard, phase: "attack", pendingReinforcements: 0, conqueredThisTurn: false };
+    const out = attack(createRng(9), g, from.id, to.id, 1);
+    expect(out.conquered).toBe(true);
+    expect(out.game.players[0]!.cards.length).toBe(1);
+    expect(out.game.deck.length + out.game.players[0]!.cards.length + out.game.discard.length).toBe(5);
+  });
+
+  it("awards no card (legal) when deck and discard are both empty", () => {
+    const g0 = newGame({ seed: 22, names: TWO });
+    const from = TERRITORIES.find((t) => g0.owner[t.id] === 0)!;
+    const to = TERRITORY_BY_ID.get(from.neighbors.find((n) => g0.owner[n] === 1) ?? "")!;
+    const owner = { ...g0.owner, [to.id]: 1 };
+    const armies = { ...g0.armies, [from.id]: 60, [to.id]: 1 };
+    const g: Game = { ...g0, owner, armies, deck: [], discard: [], phase: "attack", pendingReinforcements: 0, conqueredThisTurn: false };
+    const out = attack(createRng(9), g, from.id, to.id, 1);
+    expect(out.conquered).toBe(true);
+    expect(out.game.players[0]!.cards.length).toBe(0);
+  });
+});

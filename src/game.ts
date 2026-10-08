@@ -46,6 +46,7 @@ export const PLAYER_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#eab308", "#9333
 export const DEFAULT_NAMES = ["Red", "Blue", "Green", "Gold", "Violet", "Orange"] as const;
 
 // Card-trade values: 4,6,8,10,12,15 then +5 each.
+
 export function cardTradeValue(tradesAlreadyMade: number): number {
   const table = [4, 6, 8, 10, 12, 15];
   if (tradesAlreadyMade < table.length) return table[tradesAlreadyMade]!;
@@ -274,12 +275,20 @@ export function attack(rng: Rng, game: Game, from: string, to: string, moveIn?: 
     }
   }
 
-  // Award one card per turn, on the first conquest.
+  // Award one card per turn, on the first conquest. When the deck is empty the
+  // discard pile is reshuffled into a new deck (classic rule). Only if BOTH piles are
+  // empty is no card awarded — a legal state, not an error.
+  let discard = game.discard;
   if (conquered && !game.conqueredThisTurn && phase !== "over") {
-    if (deck.length === 0) throw new Error("card deck exhausted: cannot award a card (engine invariant)");
-    const card = deck[0]!;
-    deck = deck.slice(1);
-    players = players.map((p) => (p.id === game.currentPlayer ? { ...p, cards: [...p.cards, card] } : p));
+    if (deck.length === 0 && discard.length > 0) {
+      deck = rng.shuffle(discard);
+      discard = [];
+    }
+    if (deck.length > 0) {
+      const card = deck[0]!;
+      deck = deck.slice(1);
+      players = players.map((p) => (p.id === game.currentPlayer ? { ...p, cards: [...p.cards, card] } : p));
+    }
   }
 
   const next: Game = {
@@ -288,6 +297,7 @@ export function attack(rng: Rng, game: Game, from: string, to: string, moveIn?: 
     owner,
     players,
     deck,
+    discard,
     phase,
     winner,
     conqueredThisTurn,
