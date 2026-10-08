@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.gate-logs/
+.gate-lock/
+worktrees/
