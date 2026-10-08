@@ -16,7 +16,7 @@ LANDED | row=4 | sha=79c33ab | verify=MY OWN: full gate GREEN exit 0, 39/39 · t
 QUEUE | row=5 | Trade-cards UI: let player pick the 3 cards (currently fixed indices 0-2) | src=web/main.ts
 QUEUE | row=6 | Multi-player convergence: 3p 5/6, 4p 1/4 — break the balanced-melee deadlock | src=src/ai.ts
 
-RECOVERY | repo=/home/administrator/Risk | remote=https://github.com/ArndRosemeier/Risk-Haiku.git | branch=main | gate=bash scripts/gate.sh
+RECOVERY | repo=/home/administrator/projects/Risk | remote=https://github.com/ArndRosemeier/Risk-Haiku.git | branch=main | gate=bash scripts/gate.sh
 
 ## Guards
 
