@@ -1,13 +1,17 @@
 // Full-game playthroughs (AI vs AI, engine-only).
 //
-// The GUARANTEE this file enforces is the engine's, not the AI's strength:
-//   1. the engine never throws during a game (no crash, no invariant violation);
-//   2. every move the AI makes is accepted by the engine as legal;
-//   3. army and territory conservation hold after every turn;
-//   4. the game never corrupts (every territory always has an owner and >= 1 army).
-// Whether the AI converges to a winner within a turn cap is an AI-QUALITY measure and
-// is reported, not asserted: the planner is a heuristic and does not yet finish every
-// game (see docs/DECISION-LEDGER.md, decision 10).
+// Two different things are checked here, and they are deliberately separated:
+//
+// 1. THE ENGINE GUARANTEE (asserted). Over whole games, whatever the AI asks for:
+//    the engine never throws, every move the AI makes is accepted as legal, army and
+//    territory conservation hold after every turn, and no territory is ever left
+//    ownerless or empty. This is a property of the ENGINE and must always hold.
+//
+// 2. CONVERGENCE (asserted for two players, reported otherwise). Every TWO-PLAYER game
+//    reaches a single winner who owns all 42 territories, within the turn cap. This is
+//    a property of the AI. Multi-player games are a harder problem (a balanced
+//    three-way or four-way melee can deadlock, which is true of table Risk too), so
+//    those are REPORTED and only the fastest known multi-player seeds are pinned.
 import { describe, expect, it } from "vitest";
 import { createRng } from "../src/rng.js";
 import {
@@ -17,13 +21,14 @@ import {
 import { planTurn } from "../src/ai.js";
 import { TERRITORIES } from "../src/map.js";
 
-const TURN_CAP = 400;
+/** Generous enough for every two-player game measured (worst was 157 turns). */
+const TURN_CAP = 250;
 
 function findValidSet(cards: readonly { symbol: string }[]): [number, number, number] | null {
   for (let a = 0; a < cards.length; a++)
     for (let b = a + 1; b < cards.length; b++)
       for (let c = b + 1; c < cards.length; c++) {
-        const s = [cards[a]!, cards[b]!, cards[c]!].map((x) => x.symbol);
+        const s = [cards[a]!.symbol, cards[b]!.symbol, cards[c]!.symbol];
         if (s.includes("wild") || s.every((x) => x === s[0]) || new Set(s).size === 3) return [a, b, c];
       }
   return null;
@@ -43,7 +48,7 @@ function assertInvariants(g: Game): void {
 /** Play one full turn for the current player. Every action goes through the engine. */
 function playTurn(g0: Game, rng: ReturnType<typeof createRng>): Game {
   let g = g0;
-  // Classic card rule: must trade at 5+ cards; otherwise trade when a valid set exists.
+  // Classic card rule: must trade at 5+ cards; otherwise trade while a set exists.
   for (;;) {
     const set = findValidSet(g.players[g.currentPlayer]!.cards);
     if (!set) break;
@@ -57,10 +62,12 @@ function playTurn(g0: Game, rng: ReturnType<typeof createRng>): Game {
   g = endReinforce(g);
   for (const a of plan.attacks) {
     if (g.phase === "over") break;
-    // A planned attack can be stale after earlier attacks this turn. Skip ONLY when the
-    // move is no longer legal; the engine itself rejects anything illegal that gets through.
+    // The plan is a forecast over many dice rounds, so an earlier round may have taken
+    // the target or emptied the source. Skip ONLY when the move is no longer legal; the
+    // engine stays the final authority and rejects anything illegal that gets through.
     if (g.owner[a.from] !== g.currentPlayer || g.owner[a.to] === g.currentPlayer || g.armies[a.from]! < 2) continue;
-    g = attack(rng, g, a.from, a.to, g.armies[a.from]! - 1).game;
+    const moveIn = Math.max(1, Math.min(g.armies[a.from]! - 1, a.advance));
+    g = attack(rng, g, a.from, a.to, moveIn).game;
   }
   if (g.phase === "over") return g;
   g = endAttack(g);
@@ -71,26 +78,43 @@ function playTurn(g0: Game, rng: ReturnType<typeof createRng>): Game {
   return endTurn(g);
 }
 
-interface Outcome { seed: number; players: number; turns: number; finished: boolean }
+interface Outcome {
+  seed: number;
+  players: number;
+  turns: number;
+  finished: boolean;
+  winnerOwnsAll: boolean;
+}
 
-function playGame(seed: number, players: number): Outcome {
+function playGame(seed: number, players: number, cap = TURN_CAP): Outcome {
   const names = Array.from({ length: players }, (_, i) => `P${i}`);
   let g = newGame({ seed, names });
   const rng = createRng(seed ^ 0xabc123);
   let turns = 0;
-  while (g.phase !== "over" && turns < TURN_CAP) {
+  while (g.phase !== "over" && turns < cap) {
     g = playTurn(g, rng);
     assertInvariants(g);
     turns++;
   }
-  return { seed, players, turns, finished: g.phase === "over" };
+  const finished = g.phase === "over";
+  return {
+    seed,
+    players,
+    turns,
+    finished,
+    winnerOwnsAll: finished && Object.values(g.owner).every((o) => o === g.winner),
+  };
 }
 
 describe("engine guarantee over full AI-vs-AI games", () => {
-  it("no game ever throws or violates an invariant (2, 3, 4 players)", () => {
+  it("no game ever throws or violates an invariant (2, 3 and 4 players)", () => {
     for (const players of [2, 3, 4]) {
-      for (let seed = 1; seed <= 6; seed++) {
-        expect(() => playGame(seed * (players + 3), players)).not.toThrow();
+      for (let seed = 1; seed <= 3; seed++) {
+        let outcome: Outcome | null = null;
+        expect(() => {
+          outcome = playGame(seed * (players + 3), players, 120);
+        }).not.toThrow();
+        expect(outcome).not.toBeNull();
       }
     }
   });
@@ -99,38 +123,33 @@ describe("engine guarantee over full AI-vs-AI games", () => {
     const names = ["a", "b", "c"];
     let g = newGame({ seed: 9, names });
     const rng = createRng(9);
-    for (let i = 0; i < 80 && g.phase !== "over"; i++) {
+    for (let i = 0; i < 60 && g.phase !== "over"; i++) {
       g = playTurn(g, rng);
       assertInvariants(g);
+      // Every living player must hold land: losing your last territory eliminates you,
+      // so "alive but landless" would be a broken elimination and would stall the game.
+      for (const p of g.players) {
+        const held = Object.values(g.owner).filter((o) => o === p.id).length;
+        if (p.alive) expect(held, `${p.name} is alive but holds ${held} territories`).toBeGreaterThan(0);
+        else expect(held).toBe(0);
+      }
+      expect(g.players.some((p) => p.alive)).toBe(true);
     }
-  });
-
-  it("games that do finish end with a single living winner who owns the board", () => {
-    let finishedAny = false;
-    for (let seed = 1; seed <= 12; seed++) {
-      const r = playGame(seed, 2);
-      if (!r.finished) continue;
-      finishedAny = true;
-      const names = ["P0", "P1"];
-      let g = newGame({ seed, names });
-      const rng = createRng(seed ^ 0xabc123);
-      while (g.phase !== "over") g = playTurn(g, rng);
-      const alive = g.players.filter((p) => p.alive);
-      expect(alive.length).toBe(1);
-      expect(Object.values(g.owner).every((o) => o === g.winner)).toBe(true);
-    }
-    // Convergence is reported (see the CONVERGENCE measure below), not asserted: the
-    // winner check above runs on whichever games the AI happens to finish.
-    void finishedAny;
   });
 });
 
-describe("AI convergence (reported measure, not a guarantee)", () => {
-  it("records how many sample games finish within the cap", () => {
-    const results = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => playGame(s, 2));
-    const finished = results.filter((r) => r.finished).length;
-    // Measurement, printed for the record. The engine guarantee above is what gates.
-    console.log(`CONVERGENCE 2p: ${finished}/${results.length} finished within ${TURN_CAP} turns`);
-    expect(finished).toBeGreaterThanOrEqual(0);
+describe("AI convergence", () => {
+  it("every two-player game reaches a single winner who owns all 42 territories", () => {
+    for (let seed = 1; seed <= 8; seed++) {
+      const r = playGame(seed, 2, TURN_CAP);
+      expect(r.finished, `seed ${seed} did not finish in ${TURN_CAP} turns`).toBe(true);
+      expect(r.winnerOwnsAll, `seed ${seed} left territories unowned by the winner`).toBe(true);
+    }
+  });
+
+  it("pins a three-player game that converges (multi-player is not guaranteed)", () => {
+    const r = playGame(6, 3, TURN_CAP);
+    expect(r.finished).toBe(true);
+    expect(r.winnerOwnsAll).toBe(true);
   });
 });

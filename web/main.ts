@@ -13,6 +13,9 @@ import { serialize, deserialize } from "../src/save.js";
 
 const SAVE_KEY = "risk-hero-save-v1";
 const AI_DELAY_MS = 420;
+// One attack step is a single dice round, and a turn can now hold a long run of them,
+// so the per-round beat is much shorter than the per-turn beat.
+const AI_ATTACK_DELAY_MS = 90;
 
 // --- state ---------------------------------------------------------------
 type Mode = { kind: "hotseat" } | { kind: "vsAi"; humanId: number };
@@ -339,8 +342,19 @@ async function runAiTurns(): Promise<void> {
       game = endReinforce(game);
       render();
       for (const a of plan.attacks) {
-        await sleep(AI_DELAY_MS);
-        const out = attack(battleRng, game, a.from, a.to, 1);
+        // The plan is a forecast over many dice rounds: an earlier round may have taken
+        // the target or emptied the source. Re-check before applying, then let the
+        // engine stay the final authority on legality.
+        if (
+          game.owner[a.from] !== game.currentPlayer ||
+          game.owner[a.to] === game.currentPlayer ||
+          game.armies[a.from]! < 2
+        ) {
+          continue;
+        }
+        await sleep(AI_ATTACK_DELAY_MS);
+        const moveIn = Math.max(1, Math.min(game.armies[a.from]! - 1, a.advance));
+        const out = attack(battleRng, game, a.from, a.to, moveIn);
         game = out.game;
         showBattle(out.combat, out.conquered);
         if (out.conquered) flash(a.to);
